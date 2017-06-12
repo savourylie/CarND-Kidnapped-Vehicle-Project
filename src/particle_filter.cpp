@@ -27,13 +27,12 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
 	// Initialize number of particles
-	num_particles = 500;
+	num_particles = 100;
 
 	// Create Gaussian generators
 	// std::default_random_engine rand_generator;
 	std::random_device rd;
     std::mt19937_64 rand_generator(rd());
-
 	std::normal_distribution<double> x_distro(0.0, std[0]);
 	std::normal_distribution<double> y_distro(0.0, std[1]);
 	std::normal_distribution<double> theta_distro(0.0, std[2]);
@@ -84,10 +83,21 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 		double temp_x = particles[i].x;
 		double temp_y = particles[i].y;
 		double temp_theta = particles[i].theta;
+		
+		// std::cout << "Yaw rate: " << yaw_rate << std::endl;
 
-		particles[i].x = temp_x + (velocity / yaw_rate) * (sin(temp_theta + yaw_rate * delta_t) - sin(temp_theta)) + x_noise;
-		particles[i].y = temp_y + (velocity / yaw_rate) * (cos(temp_theta) - cos(temp_theta + yaw_rate * delta_t)) + y_noise;
-		particles[i].theta = temp_theta + yaw_rate * delta_t + theta_noise;		
+		if (abs(yaw_rate) > 0.001) {
+			particles[i].x = temp_x + (velocity / yaw_rate) * (sin(temp_theta + yaw_rate * delta_t) - sin(temp_theta)) + x_noise;
+			particles[i].y = temp_y + (velocity / yaw_rate) * (cos(temp_theta) - cos(temp_theta + yaw_rate * delta_t)) + y_noise;
+			particles[i].theta = temp_theta + yaw_rate * delta_t + theta_noise;		
+		}
+
+		else {
+			particles[i].x = temp_x + velocity * delta_t * cos(temp_theta) + x_noise;
+			particles[i].y = temp_y + velocity * delta_t * sin(temp_theta) + y_noise;
+			particles[i].theta = temp_theta + theta_noise;		
+		}
+		
 	}
 
 	// std::cout << "Left prediction()" << std::endl;
@@ -181,6 +191,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 			
 			if (dist_predict <= 50) {
 				LandmarkObs predicted;
+				predicted.id = landmark_id;
 				predicted.x = landmark_x;
 				predicted.y = landmark_y;
 
@@ -229,10 +240,11 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		}
 
 		else {
-			prob = 0;
+			prob = 0.0;
 		}
 
 		particles[i].weight = prob;
+		weights[i] = particles[i].weight;
 	}
 
 	// std::cout << "Left updateWeights()" << std::endl;
@@ -257,23 +269,13 @@ void ParticleFilter::resample() {
 
 	std::random_device rd;
     std::mt19937_64 rand_generator(rd());
-	// std::default_random_engine rand_generator;
     std::discrete_distribution<> d(weights.begin(), weights.end());
-    std::map<int, int> m;
 
     for (unsigned int i = 0; i < num_particles; ++i) {
-		// std::cout << "Particle " << i << " Pushed OK" << std::endl;
         particles_temp.push_back(particles[d(rand_generator)]);
     }
 
-	// std::cout << "Resampled p size: " << particles_temp.size() << std::endl;
-
-	// particles = particles_temp;
-	for (unsigned int j = 0; j < particles.size(); ++j) {
-		particles[j] = particles_temp[j];
-	}
-	
-	// std::cout << "Left resample()" << std::endl;
+	particles = particles_temp;
 }
 
 Particle ParticleFilter::SetAssociations(Particle particle, std::vector<int> associations, std::vector<double> sense_x, std::vector<double> sense_y)

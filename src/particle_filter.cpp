@@ -79,15 +79,38 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 		particles[i].y = temp_y + (velocity / yaw_rate) * (cos(temp_theta) - cos(temp_theta + yaw_rate * delta_t)) + y_noise;
 		particles[i].theta = temp_theta + yaw_rate * delta_t + theta_noise;		
 	}
-
 }
 
-void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
+std::vector<int> ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
 	// TODO: Find the predicted measurement that is closest to each observed measurement and assign the 
 	//   observed measurement to this particular landmark.
 	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
 	//   implement this method and use it as a helper during the updateWeights phase.
+	std::vector<int> closest;
 
+	for (unsigned int i = 0; i < observations.size(); ++i) {
+		double obs_x = observations[i].x;
+		double obs_y = observations[i].y;
+
+		double min = std::numeric_limits<double>::infinity();
+		double min_idx;
+
+		for (unsigned int j = 0; j < predicted.size(); ++j) {
+			double predicted_x = predicted[j].x;
+			double predicted_y = predicted[j].y;
+
+			double dist = sqrt((obs_x - predicted_x)*(obs_x - predicted_x) + (obs_y - predicted_y)*(obs_y - predicted_y));
+			
+			if (dist < min) {
+				min = dist;
+				min_idx = j;
+			}	
+		}
+
+		closest.push_back(min_idx);
+	}
+
+	return closest;
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
@@ -102,6 +125,94 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation 
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
+
+	// Create Gaussian generators
+	double lm_std_x = std_landmark[0];
+	double lm_std_y = std_landmark[1];
+
+	std::default_random_engine rand_generator;
+	std::normal_distribution<double> x_distro(0.0, lm_std_x);
+	std::normal_distribution<double> y_distro(0.0, lm_std_y);
+
+	// Loop thru all particles
+	for (unsigned int i = 0; i < particles.size(); ++i) {
+		// Get current particle coordinates and heading
+		double p_x = particles[i].x;
+		double p_y = particles[i].y;
+		double p_theta = particles[i].theta;
+
+		// Create rotation matrix
+		double rot_mat[2][2];
+		rot_mat[0][0] = cos(p_theta);
+		rot_mat[0][1] = sin(-p_theta);
+		rot_mat[1][0] = sin(p_theta);
+		rot_mat[1][1] = cos(p_theta);
+		
+		// Declare landmarks_in_range and predicted landmarks
+		std::vector<LandmarkObs> observed_lms;
+		std::vector<LandmarkObs> predicted_lms;
+
+		// Get landmarks_in_range (predicted landmarks)
+		for (unsigned int j = 0; j < map_landmarks.landmark_list.size(); ++j) {
+			int landmark_id = map_landmarks.landmark_list[j].id_i;
+			double landmark_x = map_landmarks.landmark_list[j].x_f;
+			double landmark_y = map_landmarks.landmark_list[j].y_f;
+
+			double dist_predict = sqrt((p_x - landmark_x)*(p_x - landmark_x) + (p_y - landmark_y)*(p_y - landmark_y));
+			
+			if (dist_predict <= 50) {
+				LandmarkObs predicted;
+				predicted.x = landmark_x;
+				predicted.y = landmark_y;
+
+				predicted_lms.push_back(predicted);
+			}
+		}
+
+		// Get observed landmarks
+		for (unsigned int i = 0; i < observations.size(); ++i) {
+			int obs_id = observations[i].id;
+			double obs_x = observations[i].x + x_distro(rand_generator);
+			double obs_y = observations[i].y + y_distro(rand_generator);;
+
+			double trans_x = rot_mat[0][0] * obs_x + rot_mat[0][1] * obs_y; 
+			double trans_y = rot_mat[1][0] * obs_x + rot_mat[1][1] * obs_y;
+
+			double lm_x = trans_x + p_x;
+			double lm_y = trans_y + p_y;
+
+			double dist_obs = sqrt((p_x - lm_x)*(p_x - lm_x) + (p_y - lm_y)*(p_y - lm_y));
+
+			if (dist_obs <= 50) {
+				LandmarkObs obs;
+				obs.x = lm_x;
+				obs.y = lm_y;
+				observed_lms.push_back(obs);
+			}			
+		}
+
+		std::vector<int> closest_ids = dataAssociation(predicted_lms, observed_lms);
+
+		double prob = 1.0;
+
+		for (unsigned int k = 0; k < closest_ids.size(); ++k) {
+			int lm_id = closest_ids[k];
+			double mu_x = predicted_lms[lm_id].x;
+			double mu_y = predicted_lms[lm_id].y;
+			
+			prob *= Gaussian2D(observed_lms[k].x, observed_lms[k].y, mu_x, mu_y, lm_std_x, lm_std_y);
+		}
+
+		weights.push_back(prob);
+	}
+}
+
+double ParticleFilter::Gaussian2D(double x, double y, double mu_x, double mu_y, double std_x, double std_y) {
+	double scaling_constant = 1 / (2 * M_PI * std_x * std_y);
+	double index_x = (x - mu_x)*(x - mu_x) / (2 * std_x*std_x);
+	double index_y = (y - mu_y)*(y - mu_y) / (2 * std_y*std_y);
+
+	return scaling_constant * exp(-1 * (index_x + index_y));
 }
 
 void ParticleFilter::resample() {

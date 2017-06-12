@@ -78,7 +78,7 @@ public:
 	 * @param predicted Vector of predicted landmark observations
 	 * @param observations Vector of landmark observations
 	 */
-	void dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations);
+	std::vector<int> dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations);
 	
 	/**
 	 * updateWeights Updates the weights for each particle based on the likelihood of the 
@@ -96,6 +96,9 @@ public:
 	 * resample Resamples from the updated set of particles to form
 	 *   the new set of particles.
 	 */
+
+	double Gaussian2D(double x, double y, double mu_x, double mu_y, double std_x, double std_y);
+
 	void resample();
 
 	/*

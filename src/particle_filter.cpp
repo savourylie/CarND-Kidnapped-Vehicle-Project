@@ -60,6 +60,26 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	//  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
 	//  http://www.cplusplus.com/reference/random/default_random_engine/
 
+	// Create Gaussian generators
+	std::default_random_engine rand_generator;
+	std::normal_distribution<double> x_distro(0.0, std_pos[0]);
+	std::normal_distribution<double> y_distro(0.0, std_pos[1]);
+	std::normal_distribution<double> theta_distro(0.0, std_pos[2]);
+
+	for (unsigned int i = 0; i < particles.size(); ++i) {
+		double x_noise = x_distro(rand_generator);
+		double y_noise = y_distro(rand_generator);
+		double theta_noise = theta_distro(rand_generator);
+
+		double temp_x = particles[i].x;
+		double temp_y = particles[i].y;
+		double temp_theta = particles[i].theta;
+
+		particles[i].x = temp_x + (velocity / yaw_rate) * (sin(temp_theta + yaw_rate * delta_t) - sin(temp_theta)) + x_noise;
+		particles[i].y = temp_y + (velocity / yaw_rate) * (cos(temp_theta) - cos(temp_theta + yaw_rate * delta_t)) + y_noise;
+		particles[i].theta = temp_theta + yaw_rate * delta_t + theta_noise;		
+	}
+
 }
 
 void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
